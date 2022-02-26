@@ -9,8 +9,310 @@ output:
     df_print: paged
 ---
 
-```{r, message=FALSE, warning=FALSE}
+# Packages
+
+```{r}
 library(tidyverse)
-datos <- read_csv("../data/raw/japan.csv")
+library(lubridate)
+library(patchwork)
+library(raster)
+library(sf)
+library(rgdal)
+library(gdalUtils)
+
+# Theme for ggplot2
+theme_set(theme_minimal())
 ```
+
+# Join data
+
+```{r, message=FALSE, warning=FALSE}
+# Initial data
+data_kyoto <- read_csv("../data/raw/kyoto.csv") %>% 
+  mutate(new_location = "Kyoto")
+data_liestal <- read_csv("../data/raw/liestal.csv")%>% 
+  mutate(new_location = "Liestal")
+data_wdc <- read_csv("../data/raw/washingtondc.csv")%>% 
+  mutate(new_location = "Washington")
+
+# Others
+data_japan <- read_csv("../data/raw/japan.csv")%>% 
+  mutate(new_location = "Japan")
+data_metwiss <- read_csv("../data/raw/meteoswiss.csv")%>% 
+  mutate(new_location = "MeteoSwiss")
+data_skorea <- read_csv("../data/raw/south_korea.csv")%>% 
+  mutate(new_location = "South Korea")
+
+# Join
+full_data <-
+  bind_rows(data_kyoto,
+            data_liestal,
+            data_wdc,
+            data_japan,
+            data_metwiss,
+            data_skorea)
+```
+
+# Export data
+
+```{r}
+write_csv(full_data, file =  "../data/processed/full_data_initial.csv")
+```
+
+# Exploratory Data Analysis
+
+```{r}
+full_data <- read_csv("../data/processed/full_data_initial.csv")
+```
+
+## Distributions
+
+```{r, fig.align="center"}
+full_data %>%
+  ggplot(aes(
+    x = new_location,
+    y = bloom_doy,
+    fill = new_location,
+    color = new_location
+  )) +
+  geom_boxplot(alpha = 0.5, show.legend = FALSE)
+```
+
+## Monthly proportion 
+
+```{r}
+full_data %>%
+  mutate(bloom_date = as.Date(bloom_date),
+         month = month(bloom_date)) %>%
+  count(month, new_location) %>%
+  group_by(month) %>%
+  mutate(total_month = sum(n)) %>%
+  ungroup() %>%
+  mutate(proportion = n / total_month) %>%
+  ggplot(aes(
+    x = month,
+    y = proportion,
+    fill = new_location,
+    color = new_location
+  )) +
+  geom_col(alpha = 0.7) +
+  coord_flip() +
+  scale_x_continuous(breaks = seq(1, 12, 1))
+```
+
+## Monthly frequence 
+
+```{r}
+full_data %>%
+  mutate(bloom_date = as.Date(bloom_date),
+         month = month(bloom_date)) %>%
+  count(month, new_location) %>%
+  group_by(month) %>%
+  mutate(total_month = sum(n)) %>%
+  ggplot(aes(
+    x = month,
+    y = total_month,
+    fill = new_location,
+    color = new_location
+  )) +
+  facet_wrap( ~ new_location, scales = "free") +
+  geom_col(alpha = 0.7, show.legend = FALSE) +
+  scale_x_continuous(breaks = seq(1, 12, 1))
+```
+
+## Historical time series 
+
+```{r}
+full_data %>%
+  mutate(bloom_date = as.Date(bloom_date)) %>%
+  group_by(bloom_date, new_location) %>%
+  summarise(median_bloom = median(bloom_doy, na.rm = TRUE)) %>%
+  ungroup() %>%
+  ggplot(aes(x = bloom_date, y = median_bloom)) +
+  facet_wrap(~ new_location, scales = "free") +
+  geom_line(alpha = 0.5) +
+  geom_smooth()
+  
+```
+
+## Time series: last century
+
+```{r}
+full_data %>%
+  mutate(bloom_date = as.Date(bloom_date)) %>%
+  filter(bloom_date >= "1900-01-01") %>% 
+  group_by(bloom_date, new_location) %>%
+  summarise(median_bloom = median(bloom_doy, na.rm = TRUE)) %>%
+  ungroup() %>%
+  ggplot(aes(x = bloom_date, y = median_bloom)) +
+  facet_wrap(~ new_location, scales = "free") +
+  geom_line(alpha = 0.5) +
+  geom_smooth()
+```
+
+## Scatter plot
+
+```{r}
+full_data %>% 
+  select(new_location, lat, long, bloom_doy) %>% 
+  pivot_longer(cols = c(lat, long)) %>% 
+  ggplot(aes(x = value, y = bloom_doy)) +
+  facet_wrap(~new_location~name, scales = "free") +
+  geom_point(alpha = 0.05) +
+  geom_smooth()
+```
+
+## Japan
+
+```{r, fig.width=8, fig.height=4}
+g1 <- full_data %>% 
+  filter(new_location == "Japan") %>% 
+  ggplot(aes(x = long, y = lat, z = bloom_doy)) +
+  stat_summary_hex(alpha = 0.8, bins = 40, fun = "mean") +
+  scale_fill_viridis_c() +
+  labs(fill = "mean") +
+  theme(legend.position = "top")
+
+g2 <- full_data %>% 
+  filter(new_location == "Japan") %>% 
+  ggplot(aes(x = long, y = lat, z = bloom_doy)) +
+  stat_summary_hex(alpha = 0.8, bins = 40, fun = "median") +
+  scale_fill_viridis_c() +
+  labs(fill = "median") +
+  theme(legend.position = "top")
+
+g3 <- full_data %>% 
+  filter(new_location == "Japan") %>% 
+  ggplot(aes(x = long, y = lat, z = bloom_doy)) +
+  stat_summary_hex(alpha = 0.8, bins = 40, fun = "sd") +
+  scale_fill_viridis_c() +
+  labs(fill = "sd") +
+  theme(legend.position = "top")
+
+g1 + g2 + g3
+```
+
+## Mapa Japan
+
+```{r}
+map_japan <- getData(name = "GADM", country = "JPN", level = 0,
+                     path = "../data/processed/")
+map_sf <- map_japan %>% st_as_sf()
+map_sf %>% 
+  ggplot() + 
+  geom_sf() +
+  geom_point(aes(x = long, y = lat, color = bloom_doy), alpha = 0.8,
+             data = full_data %>% filter(new_location == "Japan"),
+             size = 1)  +
+  scale_color_viridis_c() 
+```
+
+# Data Worldclim
+
+## Data
+
+- [Description Bioclim](https://worldclim.org/data/bioclim.html)
+- [Data format](https://worldclim.org/data/v1.4/formats.html)
+
+```{r}
+bioclim_data <- getData("worldclim", var = "bio", res = 2.5, 
+                        path = "../data/processed/")
+
+cherry_sf <- full_data %>% 
+  st_as_sf(coords = c(3, 2),
+           crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+
+cherry_bioclim <- extract(bioclim_data, cherry_sf) %>% 
+  as_tibble() %>% 
+  bind_cols(full_data, .)
+```
+
+## Exploratory Data Analysis
+
+### Scatter plot 1
+
+```{r, fig.width=8, fig.height=6}
+cherry_bioclim %>% 
+  dplyr::select(bloom_doy, starts_with("bio")) %>% 
+  pivot_longer(cols = -bloom_doy) %>% 
+  ggplot(aes(x = value, y = bloom_doy)) +
+  facet_wrap(~name, scales = "free") +
+  geom_point(alpha = 0.01) +
+  geom_smooth()
+```
+
+### Scatter plot 2
+
+```{r, fig.width=8, fig.height=6}
+cherry_bioclim %>% 
+  dplyr::select(bloom_doy, new_location, starts_with("bio")) %>% 
+  pivot_longer(cols = -c(bloom_doy, new_location)) %>% 
+  ggplot(aes(x = value, y = bloom_doy, color = new_location)) +
+  facet_wrap(~name, scales = "free") +
+  geom_point(alpha = 0.01) +
+  geom_smooth(se = FALSE)
+```
+
+# Data SoilGrids
+
+- [Variable description](https://www.isric.org/explore/soilgrids/faq-soilgrids#What_is_SoilGrids)
+- [Resources SoilGrids](https://files.isric.org/soilgrids/latest/data/)
+- [SoilGrids from R](https://git.wur.nl/isric/soilgrids/soilgrids.notebooks/-/blob/master/markdown/webdav_from_R.md)
+
+## Tiff
+
+```{r}
+# Soil components 
+bulk_density <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/bdod/bdod_15-30cm_mean.vrt"
+caption_exchange <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/cec/cec_15-30cm_mean.vrt"
+vol_coarse <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/cfvo/cfvo_15-30cm_mean.vrt"
+clay <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/clay/clay_15-30cm_mean.vrt"
+nitro <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/nitrogen/nitrogen_15-30cm_mean.vrt"
+ph_soil <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/phh2o/phh2o_15-30cm_mean.vrt"
+sand <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/sand/sand_15-30cm_mean.vrt"
+silt <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/silt/silt_15-30cm_mean.vrt"
+soc <-"/vsicurl/https://files.isric.org/soilgrids/latest/data/soc/soc_15-30cm_mean.vrt"
+ocd <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/ocd/ocd_15-30cm_mean.vrt"
+ocs <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/ocs/ocs_0-30cm_mean.vrt"
+
+# list
+list_soil <- list(bulk_density, caption_exchange, vol_coarse, clay, nitro,
+                  ph_soil, sand, silt, soc, ocd, ocs)
+
+# Functions
+source("../code-R/functions/limits_function.R")
+source("../code-R/functions/names_tif.R")
+source("../code-R/functions/generator_tif.R")
+source("../code-R/functions/all_tif.R")
+
+# Vector of location
+list_location <- cherry_sf %>%
+  pull(new_location) %>% 
+  as_factor() %>% 
+  levels()
+
+# Generation tif
+all_tif(x = list_location, data_sf = cherry_sf, list_vrt = list_soil)
+```
+
+## Data
+
+```{r}
+
+```
+
+
+```{r}
+
+# Import data
+japon_tif <- raster("../data/processed/prueba_japon.tif") 
+nuevo_sistema <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0"
+prueba_nueva <- projectRaster(japon_tif, crs = nuevo_sistema)
+
+
+cherry_bioclim <- extract(prueba_nueva, prueba) %>% 
+  as_tibble() %>% 
+  bind_cols(full_data, .)
+```
+
 
