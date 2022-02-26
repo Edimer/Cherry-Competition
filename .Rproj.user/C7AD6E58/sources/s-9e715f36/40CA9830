@@ -1,0 +1,26 @@
+{
+    "id": "40CA9830",
+    "path": "~/Dropbox/Cherry-Competition/code-R/00-Data-validation.Rmd",
+    "project_path": "code-R/00-Data-validation.Rmd",
+    "type": "r_markdown",
+    "hash": "3840964509",
+    "contents": "",
+    "dirty": false,
+    "created": 1645850071101.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "tempName": "Untitled1",
+        "chunk_output_type": "inline",
+        "cursorPosition": "16,0",
+        "scrollLine": "8"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1645850265,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1645850265336,
+    "read_only": false,
+    "read_only_alternatives": []
+}

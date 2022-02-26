@@ -1,0 +1,16 @@
+---
+title: "Fuentes de información"
+output:
+  html_notebook:
+    toc: true
+    toc_float:
+      smooth_scroll: false
+      collapsed: false
+    df_print: paged
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+datos <- read_csv("../data/raw/japan.csv")
+```
+
