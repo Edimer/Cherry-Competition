@@ -298,21 +298,27 @@ all_tif(x = list_location, data_sf = cherry_sf, list_vrt = list_soil)
 ## Data
 
 ```{r}
+files_soilgrid <-
+  list.files("../data/processed/", pattern = ".tif") %>%
+  str_c("../data/processed/", .)
 
+source("../code-R/functions/extract_values.R")
+
+cherry_bioclim_soilgrid <- files_soilgrid %>%
+  map(.f = extract_values, data = cherry_sf) %>%
+  bind_cols(cherry_bioclim, .)
 ```
 
+# Data final
 
 ```{r}
+cherry_bioclim_soilgrid %>% head()
+```
 
-# Import data
-japon_tif <- raster("../data/processed/prueba_japon.tif") 
-nuevo_sistema <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0"
-prueba_nueva <- projectRaster(japon_tif, crs = nuevo_sistema)
+## Export data final
 
-
-cherry_bioclim <- extract(prueba_nueva, prueba) %>% 
-  as_tibble() %>% 
-  bind_cols(full_data, .)
+```{r}
+write_csv(cherry_bioclim_soilgrid, file = "../data/processed/cherry_bioclim_soilgrids.csv")
 ```
 
 
