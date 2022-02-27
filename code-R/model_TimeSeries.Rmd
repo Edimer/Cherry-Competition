@@ -1,0 +1,101 @@
+
+---
+title: "Pruebas modelos David"
+output:
+  html_notebook:
+    toc: true
+    toc_float:
+      smooth_scroll: false
+      collapsed: false
+    df_print: paged
+---
+
+# Packages
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(prophet)
+
+theme_set(theme_minimal())
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+df <- read_csv("../data/processed/cherry_bioclim_soilgrids.csv")
+```
+
+```{r}
+head(df)
+```
+
+
+# Data processing
+
+```{r}
+df_ts <- 
+  df %>% 
+  mutate(
+    bloom_date = as.Date(bloom_date)
+  ) %>% 
+  select(new_location, ds = bloom_date, y = bloom_doy)
+```
+
+
+# Model prophet
+
+```{r}
+model_prophet <- function(location) {
+  
+  data <- 
+    df_ts %>%
+    filter(new_location == location) %>% 
+    select(-new_location) 
+  
+  model <- prophet(df = data)
+  
+  future <- make_future_dataframe(m = model, periods = 10, freq = "year",
+                                  include_history = TRUE)
+  
+  results <- predict(model, future) %>% 
+    select(ds, yhat, yhat_upper, yhat_lower)
+  
+  return(results)
+}
+```
+
+
+```{r}
+results <- 
+  df_ts %>% 
+  select(new_location) %>% 
+  distinct() %>% 
+  mutate(results = map(new_location, model_prophet))
+```
+
+
+# Results
+
+```{r}
+results %>% 
+  unnest(results) %>% 
+  mutate(ds = as.Date(ds)) %>% 
+  full_join(
+    .,
+    df %>%
+      mutate(bloom_date = as.Date(bloom_date)) %>%
+      select(new_location, bloom_date, bloom_doy),
+    by = c("new_location" = "new_location",
+           "ds" = "bloom_date")
+  ) %>% 
+  select(new_location, date = ds, bloom_day = bloom_doy, yhat, yhat_lower, yhat_upper) %>% 
+  filter(year(date) >= 2000) %>% 
+  ggplot(aes(x = date, y = yhat, color = new_location)) +
+  geom_ribbon(aes(ymax = yhat_upper, ymin = yhat_lower, fill = new_location), 
+              alpha = .1) +
+  geom_line(color = "black") + 
+  geom_vline(xintercept = as.Date("2022-01-01"), lty = 2, color = "gray35") +
+  facet_wrap(~ new_location, scales = "free", ncol = 2) +
+  theme(legend.position = "none") 
+```
+
