@@ -1,0 +1,35 @@
+---
+title: "Fuentes de información"
+output:
+  html_notebook:
+    toc: true
+    toc_float:
+      smooth_scroll: false
+      collapsed: false
+    df_print: paged
+---
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+library(raster)
+library(sf)
+library(rgdal)
+library(gdalUtils)
+
+# Theme for ggplot2
+theme_set(theme_minimal())
+```
+
+# Data
+
+```{r}
+suppressMessages(data_cherry <-
+                   read_csv("../data/processed/cherry_bioclim_soilgrids.csv"))
+
+data_cherry %>% head()
+```
+
