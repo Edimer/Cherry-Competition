@@ -11,7 +11,7 @@ limits_function <- function(data_sf) {
   uly = area$ymax
   lrx = area$xmax
   lry = area$ymin
-  limits = c(ulx, uly, lrx, lry)
+  limits = c(ulx, uly, lrx, lry) * c(1, 1.05, 1.05, 1)
   
   # Return
   return(limits)

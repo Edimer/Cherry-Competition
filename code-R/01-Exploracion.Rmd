@@ -33,3 +33,138 @@ suppressMessages(data_cherry <-
 data_cherry %>% head()
 ```
 
+# Exploratory
+
+## Missing values
+
+```{r}
+data_cherry %>% 
+  map(.x = ., .f = function(x){sum(is.na(x))}) %>% 
+  enframe() %>% 
+  ggplot(aes(x = name, y = value)) +
+  geom_col() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Validation data
+
+- Validamos que algunos registros de SoilGrids de Japón fueron asignados a Korea del Sur (porque se traslapan las zonas). 
+
+```{r}
+variables_ks <-
+  data_cherry %>%
+  dplyr::select(new_location, contains("Japan")) %>%
+  pivot_longer(cols = -new_location) %>%
+  group_by(new_location, name) %>%
+  summarise(total_na = sum(!is.na(value))) %>%
+  ungroup() %>%
+  slice(45:55) %>%
+  pull(name)
+
+data_cherry %>% 
+  filter(new_location == "South Korea") %>% 
+  dplyr::select(variables_ks, contains("South Korea")) %>% 
+  pivot_longer(cols = contains("Japan"), names_to = "prueba", values_to = "prueba2") %>% 
+  pivot_longer(cols = contains("South Korea")) %>% 
+  separate(prueba, sep = "_", into = c("v1", "v2", "v3", "v4")) %>% 
+  unite(v2, v3, col = "id1", remove = TRUE) %>% 
+  dplyr::select(-c(v1, v4)) %>% 
+  separate(name, sep = "_", into = c("v1", "v2", "v3", "v4")) %>% 
+  unite(v2, v3, col = "id2", remove = TRUE) %>% 
+  dplyr::select(-c(v1, v4)) %>% 
+  mutate(bandera = if_else(id1 == id2, "si", "no")) %>% 
+  filter(bandera == "si") %>% 
+  mutate(bandera2 = if_else(prueba2 == value, "si", "no")) %>% 
+  filter(!is.na(prueba2))
+```
+
+
+
+## Scatter plot Japan
+
+```{r, fig.width=8, fig.height=8}
+data_cherry %>% 
+  dplyr::select(lat:bio19, contains("Japan")) %>% 
+  filter(new_location == "Japan") %>% 
+  filter(!is.na(`Japan_nitrogen_15-30cm_mean`)) %>% 
+  dplyr::select(-c(year, bloom_date, new_location)) %>% 
+  relocate(bloom_doy, everything()) %>% 
+  pivot_longer(cols = -bloom_doy) %>% 
+  ggplot(aes(x = value, y = bloom_doy)) +
+  facet_wrap(~name, scales = "free") +
+  geom_point() +
+  geom_smooth()
+```
+
+
+## Scatter plot South Korea
+
+```{r, fig.width=8, fig.height=8}
+data_cherry %>% 
+  dplyr::select(lat:bio19, contains("South Korea")) %>% 
+  filter(new_location == "South Korea") %>% 
+  filter(!is.na(`South Korea_nitrogen_15-30cm_mean`)) %>% 
+  dplyr::select(-c(year, bloom_date, new_location)) %>% 
+  relocate(bloom_doy, everything()) %>% 
+  pivot_longer(cols = -bloom_doy) %>% 
+  ggplot(aes(x = value, y = bloom_doy)) +
+  facet_wrap(~name, scales = "free") +
+  geom_point() +
+  geom_smooth()
+```
+
+
+## Scatter plot MeteoSwiss
+
+```{r, fig.width=8, fig.height=8}
+data_cherry %>% 
+  dplyr::select(lat:bio19, contains("MeteoSwiss")) %>% 
+  filter(new_location == "MeteoSwiss") %>% 
+  filter(!is.na(`MeteoSwiss_nitrogen_15-30cm_mean`)) %>% 
+  dplyr::select(-c(year, bloom_date, new_location)) %>% 
+  relocate(bloom_doy, everything()) %>% 
+  pivot_longer(cols = -bloom_doy) %>% 
+  ggplot(aes(x = value, y = bloom_doy)) +
+  facet_wrap(~name, scales = "free") +
+  geom_point() +
+  geom_smooth()
+```
+
+
+```{r}
+# Soil components 
+bulk_density <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/bdod/bdod_15-30cm_mean.vrt"
+caption_exchange <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/cec/cec_15-30cm_mean.vrt"
+vol_coarse <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/cfvo/cfvo_15-30cm_mean.vrt"
+clay <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/clay/clay_15-30cm_mean.vrt"
+nitro <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/nitrogen/nitrogen_15-30cm_mean.vrt"
+ph_soil <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/phh2o/phh2o_15-30cm_mean.vrt"
+sand <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/sand/sand_15-30cm_mean.vrt"
+silt <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/silt/silt_15-30cm_mean.vrt"
+soc <-"/vsicurl/https://files.isric.org/soilgrids/latest/data/soc/soc_15-30cm_mean.vrt"
+ocd <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/ocd/ocd_15-30cm_mean.vrt"
+ocs <- "/vsicurl/https://files.isric.org/soilgrids/latest/data/ocs/ocs_0-30cm_mean.vrt"
+
+# list
+list_soil <- list(bulk_density, caption_exchange, vol_coarse, clay, nitro,
+                  ph_soil, sand, silt, soc, ocd, ocs)
+
+cherry_sf <- data_cherry %>% 
+  st_as_sf(coords = c(3, 2),
+           crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+
+
+
+
+list_soil %>%
+      map(.f = generator_tif,
+          data = cherry_sf %>% filter(new_location == "Liestal"),
+          location = "Liestal")
+
+list_location <- cherry_sf %>%
+  pull(new_location) %>% 
+  as_factor() %>% 
+  levels()
+```
+
+
